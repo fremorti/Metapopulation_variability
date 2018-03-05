@@ -15,12 +15,12 @@ class Individual:
     '''Class that regulates individuals and their properties'''
     def __init__(self,
                  x,
-                 y
-                 ):
+                 y,
+                 d):
         '''Initialization'''
         self.x = x                  #location (x, y)
         self.y = y
-        self.dispprop = 0.2
+        self.dispprop = d
         self.age = 0
         self.fec = 2
         
@@ -41,13 +41,15 @@ class Metapopulation:
                  max_x,
                  max_y,
                  r,
-				 K,):
+				 K,
+                 d):
         """Initialization"""
         self.max_x = max_x                                      #number of grid cells along the first dimension of the landscape
         self.max_y = max_y                                      #number of grid cells along the second dimension of the landscape
         self.connections = np.array([[3]+[5 for _ in range(max_x-2)] + [3]]+[[5]+[8 for _ in range(max_x-2)] + [5] for _ in range(max_y - 2)] + [[3]+[5 for _ in range(max_x-2)] + [3]])
         self.r = r                                      #Local optimal growth rate of the resources
         self.K = K                                      #Local Carrying capacity
+        self.d = d
         self.mort = 0.1
         self.population = []
         self.localsize = np.zeros((max_x, max_y))
@@ -60,7 +62,7 @@ class Metapopulation:
         for _ in range(int(startpop)):
             x, y = rnd.randint(0,(self.max_x-1)), rnd.randint(0,(self.max_y-1))
             self.localsize[x, y] += 1
-            self.population.append(Individual(x, y))
+            self.population.append(Individual(x, y, self.d))
                                              
     def lifecycle(self):   
         '''all actions during one timestep for the metapopulation'''
@@ -78,7 +80,7 @@ class Metapopulation:
             """
             #reproduce
             for _ in range(np.random.poisson(max(0, self.mort + self.r*(self.K/self.localsize[ind.x, ind.y]-1)))):
-                self.population.append(Individual(ind.x,ind.y))
+                self.population.append(Individual(ind.x,ind.y, d))
                 self.localsize[ind.x, ind.y] += 1
             #die
             if self.mort > rnd.random():
@@ -121,7 +123,7 @@ class Datacollector:
         alpha=(np.sum(np.diag(covars)**0.5)/total_mean)**2
         gamma= np.sum(covars)/total_mean**2
         beta = alpha/gamma
-        print(f'shaopeng gamma: {gamma}\nvariance of metapopulationsize: {total_var}\nmean: {total_mean}')
+        return alpha, gamma, beta
 
 
 
@@ -129,25 +131,39 @@ class Datacollector:
 
 
 def run():
-    meta = Metapopulation(dim,dim,r,K)
+    meta = Metapopulation(dim,dim,r,K, dispprop)
     data = Datacollector(maxtime, dim, dim)
     #simulate MAXTIME timesteps (print generation time and metapopulation size for quickly checking during runs)
     for timer in range(maxtime):
         meta.lifecycle()
         data.collect(timer, meta.localsize)
-        print('generation ',timer)
-        print("popsize: {}\n".format(len(meta.population)))
+        #print('generation ',timer)
+        #print("popsize: {}\n".format(len(meta.population)))
+    return data.variabilities()
 
     #data.plottotal()
-    data.plotlocal()
-    data.variabilities()
+
 
 ############
 #Parameters#
 ############
 maxtime = 100
-r, K= 1, 200
+r, K= 1, 50
 dim = 3
+vardic = {}
+for dispprop in (0.05, 0.2, 0.5):
+    for n in range(50):
+        a, g, b = run()
+        vardic['a'+str(dispprop)] = vardic.get('a'+str(dispprop), [])+[a]
+        vardic['g'+str(dispprop)] = vardic.get('g'+str(dispprop), [])+[g]
+        vardic['b'+str(dispprop)] = vardic.get('b'+str(dispprop), [])+[b]
+        print(f'{dispprop}: rep{n}')
 
-run()
+for metric in ('a', 'g', 'b'):
+    fig, ax = plt.subplots()
+    ax.boxplot([vardic[metric+str(prop)][:10] for prop in (0.05, 0.2, 0.5)], labels = ('0.05', '0.2', '0.5'))
+    #ax.set_xlabel = 'dispersal propensity'
+    #ax.title = metric
+    plt.show()
+
 print(str(time.clock()))
